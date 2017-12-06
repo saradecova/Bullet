@@ -82,8 +82,6 @@ void setLangevinTr(btRigidBody* body, btVector3* rand_force, btVector3* friction
 }
 
 int main () {
-    std::cout << "Hello World!" << std::endl;
-
     // Build the broadphase
     btBroadphaseInterface* broadphase = new btDbvtBroadphase();
 
@@ -107,16 +105,16 @@ int main () {
     loadSegmentData(&segments, &poles);
 
     // Create Chromosome mono shape
-    double len = kChromLength-0.9e-8;
+    double len = kChromLength-2*kChromRadiusMono;
     btCollisionShape* capsuleShape = new btCapsuleShapeZ(kChromRadiusMono,len);
     btScalar mass(kMass);
     btVector3 inertia(1., 1., 1.);
     capsuleShape->calculateLocalInertia(mass, inertia);
     
-    btTransform startTransform;
-    startTransform.setIdentity();
     btAlignedObjectArray<btRigidBody*> cylinders;
     for(int i=0;i<kNoSegments;++i) {
+      btTransform startTransform;
+      startTransform.setIdentity();
       startTransform.setOrigin(btVector3(btScalar(segments[i][1]),
 					 btScalar(segments[i][2]),
 					 btScalar(segments[i][3])));
@@ -125,10 +123,15 @@ int main () {
       btRigidBody* capsule_body = new btRigidBody(body_ci);
       capsule_body->setUserIndex2(i);
       cylinders.push_back(capsule_body);
+      btVector3 friction;
+      btVector3 rand_force;
+      setLangevinTr(capsule_body, &rand_force, &friction);
       dynamicsWorld->addRigidBody(capsule_body);
     }
 
     // Create Pole
+    btTransform startTransform;
+    startTransform.setIdentity();
     btCollisionShape* poleShape =
       new btCylinderShape(btVector3(kChromRadiusMono, kCylLength, kCylLength));
     
@@ -144,29 +147,52 @@ int main () {
     dynamicsWorld->addRigidBody(pole_body);
 
     // Set up constraints:
+
     // add N-1 spring constraints
-    for(int i=0;i<kNoSegments;++i) {
+    for(int i=0;i<kNoSegments-1;++i) {
       btRigidBody* b1 = cylinders[i];
       btRigidBody* b2 = cylinders[i+1];
       btPoint2PointConstraint* joint =
-	new btPoint2PointConstraint(*b1, *b2,
-				    btVector3(0,0,-1*kCylLength),
-				    btVector3(0,0,kCylLength));
+     	new btPoint2PointConstraint(*b1, *b2,
+     				    btVector3(0,0,-1*kChromLength),
+     				    btVector3(0,0,kChromLength));
       dynamicsWorld->addConstraint(joint);
     }
-    // add contraint between 4th cylinder and pole:
-    btRigidBody* b1 = cylinders[3];
     
+    //  add contraint between 4th cylinder and pole:
+    btRigidBody* b1 = cylinders[3];
     btPoint2PointConstraint* pole_chrom_joint =
       new btPoint2PointConstraint(*b1, *pole_body,
 				  btVector3(0,-1*kChromRadiusMono,0),
-				  btVector3(0,kChromLength,0));
+				  btVector3(0,kCylLength,0));
     dynamicsWorld->addConstraint(pole_chrom_joint);
     btPoint2PointConstraint* pole_joint =
-      new btPoint2PointConstraint(*pole_body, btVector3(0, -1*kChromLength,0));
+      new btPoint2PointConstraint(*pole_body, btVector3(0, -1*kCylLength,0));
     dynamicsWorld->addConstraint(pole_joint);
 
+    // Stepping through the simulation:
+    for (int step = 0; step < 5000; step++) {
+      dynamicsWorld->stepSimulation(kDT,1,kDT);
+      btAlignedObjectArray<btCollisionObject*> objs = dynamicsWorld->getCollisionObjectArray();
+      for (int i = 0; i < objs.size(); i++) {
+      	btVector3 v = static_cast<btRigidBody*>(objs[i])->getCenterOfMassPosition();
+	std::cout << v.getX() << " " << v.getY() << " " << v.getZ() << std::endl;
+      	btVector3 rand_force, friction;
+      	setLangevinTr(static_cast<btRigidBody*>(objs[i]),&rand_force,&friction);
+      }
+    }
+    
+
     // Clean up behind ourselves like good little programmers
+    for (int i = 0; i < kNoSegments; i++) {
+      dynamicsWorld->removeRigidBody(cylinders[i]);
+      delete cylinders[i]->getMotionState();
+      delete cylinders[i];
+    }
+    dynamicsWorld->removeRigidBody(pole_body);
+    delete pole_body->getMotionState();
+    delete pole_body;
+    
     delete dynamicsWorld;
     delete solver;
     delete dispatcher;
