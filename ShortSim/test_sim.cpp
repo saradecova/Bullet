@@ -58,22 +58,40 @@ int main() {
 
   // Create mesh
   btTriangleIndexVertexArray* meshInterface = new btTriangleIndexVertexArray();
-  std::vector<btVector3>* vertices = new std::vector<btVector3>(Trimesh::kNucleusVertices);
+  std::vector<btVector3>* vertices1 = new std::vector<btVector3>(Trimesh::kNucleusVertices);
   for (int i = 0; i < Trimesh::kNucleusVertices; i++) {
-    vertices->at(i) = btVector3(btScalar(Trimesh::nuc1_vertices[3*i]),
+    vertices1->at(i) = btVector3(btScalar(Trimesh::nuc1_vertices[3*i]),
                                 btScalar(Trimesh::nuc1_vertices[3*i+1]),
                                 btScalar(Trimesh::nuc1_vertices[3*i+2]));
   }
 
-  btIndexedMesh mesh;
-  mesh.m_numTriangles = Trimesh::kNucleusFaces;
-  mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(Trimesh::nuc_indices);
-  mesh.m_triangleIndexStride = sizeof (short)*3;
-  mesh.m_numVertices = vertices->size();
-  mesh.m_vertexStride = sizeof(btVector3);
-  mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices->data());
+  btIndexedMesh top_mesh;
+  top_mesh.m_numTriangles = Trimesh::kNucleusFaces;
+  top_mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(Trimesh::nuc_indices);
+  top_mesh.m_triangleIndexStride = sizeof (short)*3;
+  top_mesh.m_numVertices = vertices1->size();
+  top_mesh.m_vertexType = PHY_DOUBLE;
+  top_mesh.m_vertexStride = sizeof(btVector3DoubleData);
+  top_mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices1->data());
+  meshInterface->addIndexedMesh(top_mesh, PHY_SHORT);
 
-  meshInterface->addIndexedMesh(mesh, PHY_SHORT);
+  std::vector<btVector3>* vertices2 = new std::vector<btVector3>(Trimesh::kNucleusVertices);
+  for (int i = 0; i < Trimesh::kNucleusVertices; i++) {
+    vertices2->at(i) = btVector3(btScalar(Trimesh::nuc2_vertices[3*i]),
+                                 btScalar(Trimesh::nuc2_vertices[3*i+1]),
+                                 btScalar(Trimesh::nuc2_vertices[3*i+2]));
+  }
+
+  btIndexedMesh bot_mesh;
+  bot_mesh.m_numTriangles = Trimesh::kNucleusFaces;
+  bot_mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(Trimesh::nuc_indices);
+  bot_mesh.m_triangleIndexStride = sizeof (short)*3;
+  bot_mesh.m_numVertices = vertices2->size();
+  bot_mesh.m_vertexStride = sizeof(btVector3DoubleData);
+  bot_mesh.m_vertexType = PHY_DOUBLE;
+  bot_mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices2->data());
+  meshInterface->addIndexedMesh(bot_mesh, PHY_SHORT);
+
   bool useQuantizedAabbCompression = false;
   btBvhTriangleMeshShape* trimeshShape =
     new btBvhTriangleMeshShape(meshInterface,useQuantizedAabbCompression);
@@ -86,7 +104,7 @@ int main() {
 
   // create free moving capsule
   double len = kChromLength-2*kChromRadiusMono;
-  btCollisionShape* capsuleShape = new btCapsuleShapeZ(kChromRadiusMono,len);
+  btCollisionShape* capsuleShape = new btSphereShape(kChromRadiusMono);
   btScalar mass(kMass);
   btVector3 inertia(1., 1., 1.);
   capsuleShape->calculateLocalInertia(mass, inertia);
@@ -98,17 +116,15 @@ int main() {
   btRigidBody::btRigidBodyConstructionInfo body_ci(mass, motion_state, capsuleShape, inertia);
   btRigidBody* capsule_body = new btRigidBody(body_ci);
   capsule_body->setUserIndex2(1);
-  capsule_body->applyCentralForce(btVector3(0,0.8e-6,1.5e-6));
+  capsule_body->applyCentralForce(btVector3(0,0.5e-6,1.5e-6));
   dynamicsWorld->addRigidBody(capsule_body);
 
-  for (int i = 0; i < 1000; i++) {
+  for (int i = 0; i < 4000; i++) {
     // std::cout << "STEP: " << step << std::endl;
     dynamicsWorld->stepSimulation(kDT,1,kDT);
+    // std::cout << capsule_body->getCenterOfMassPosition().length() << std::endl;
     btVector3 capsule = capsule_body->getCenterOfMassPosition();
-    btVector3 nucleus = body->getCenterOfMassPosition();
     std::cout << capsule.getX() << " " << capsule.getY() << " " << capsule.getZ() << std::endl;
-
-    // std::cout << "nucleus" << nucleus.getX() << " " << nucleus.getY() << " " << nucleus.getZ() << std::endl;
   }
 
   delete dynamicsWorld;
