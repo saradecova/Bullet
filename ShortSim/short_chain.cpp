@@ -15,7 +15,7 @@
 #include "constants.h"
 
 const double kChromRadiusMono = 1e-8;
-const double kChromLength = 1.25e-8;
+const double kChromLength = 2.5e-8;
 const double kMass= 13e6*1.7e-27/5;
 const double kCylLength = 15e-8;
 
@@ -68,7 +68,7 @@ void loadSegmentData(std::vector<std::vector<double>>* segments,
   else std::cout << "Unable to open file InitCoord25e-9_18seg.txt" << std::endl;
 }
 
-btIndexedMesh createMesh(int no_faces, double* vs, int no_vs, unsigned short* is) {
+btIndexedMesh createMesh(int no_faces, double* vs, int no_vs, short* is) {
   std::vector<btVector3>* vertices = new std::vector<btVector3>(no_vs);
   for (int i = 0; i < no_vs; i++) {
     vertices->at(i) = btVector3(btScalar(vs[3*i]), btScalar(vs[3*i+1]), btScalar(vs[3*i+2]));
@@ -78,6 +78,7 @@ btIndexedMesh createMesh(int no_faces, double* vs, int no_vs, unsigned short* is
   mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(is);
   mesh.m_triangleIndexStride = sizeof (short)*3;
   mesh.m_numVertices = vertices->size();
+  mesh.m_vertexType = PHY_DOUBLE;
   mesh.m_vertexStride = sizeof(btVector3);
   mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices->data());
   return mesh;
@@ -139,37 +140,10 @@ int main () {
   btDiscreteDynamicsWorld* dynamicsWorld =
     new btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfiguration);
   dynamicsWorld->setGravity(btVector3(0, 0, 0));
-  // dynamicsWorld->getSolverInfo().m_erp = btScalar(0.8);
-  // dynamicsWorld->getSolverInfo().m_globalCfm = btScalar(0.01);
+  dynamicsWorld->getSolverInfo().m_erp = btScalar(0.8);
+  dynamicsWorld->getSolverInfo().m_globalCfm = btScalar(10);
 
   dynamicsWorld->setInternalTickCallback(loggingCallback, &dynamicsWorld, kDT);
-
-  // create Nucleus as Trimesh
-  // Create a static triemsh shape to represent the nucleus and surrounding cylinder.
-  btTriangleIndexVertexArray* meshInterface = new btTriangleIndexVertexArray();
-  // top hemisphere
-  btIndexedMesh nuc_top = createMesh(Trimesh::kNucleusFaces, Trimesh::nuc1_vertices,
-  				     Trimesh::kNucleusVertices, Trimesh::nuc_indices);
-  meshInterface->addIndexedMesh(nuc_top, PHY_SHORT);
-  // bottom hemisphere
-  // btIndexedMesh nuc_bot = createMesh(Trimesh::kNucleusFaces, Trimesh::nuc2_vertices,
-  //				     Trimesh::kNucleusVertices, Trimesh::nuc_indices);
-  // meshInterface->addIndexedMesh(nuc_bot, PHY_SHORT);
-
-  btTransform trans;
-  trans.setIdentity();
-  bool useQuantizedAabbCompression = false;
-  btBvhTriangleMeshShape* trimeshShape =
-    new btBvhTriangleMeshShape(meshInterface,useQuantizedAabbCompression);
-
-  btRigidBody::btRigidBodyConstructionInfo nucleus_ci(0, NULL, trimeshShape, btVector3(0,0,0));
-  btRigidBody* body = new btRigidBody(nucleus_ci);
-  body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CollisionFlags::CF_STATIC_OBJECT);
-  body->setUserIndex2(100);
-  dynamicsWorld->addRigidBody(body);
-  // btCollisionObject* nucleus = new btCollisionObject();
-  // nucleus->setCollisionShape(trimeshShape);
-  // dynamicsWorld->addCollisionObject(nucleus,short(btBroadphaseProxy::StaticFilter),short(btBroadphaseProxy::AllFilter^btBroadphaseProxy::StaticFilter));
 
   // load chromosome data
   std::vector<std::vector<double>> segments(kNoSegments);
@@ -180,7 +154,7 @@ int main () {
   double len = kChromLength-2*kChromRadiusMono;
   btCollisionShape* capsuleShape = new btCapsuleShapeZ(kChromRadiusMono,len);
   btScalar mass(kMass);
-  btVector3 inertia(1., 1., 1.);
+  btVector3 inertia(0,0,0);
   capsuleShape->calculateLocalInertia(mass, inertia);
 
   btAlignedObjectArray<btRigidBody*> cylinders;
@@ -197,7 +171,7 @@ int main () {
     cylinders.push_back(capsule_body);
     btVector3 friction;
     btVector3 rand_force;
-    setLangevinTr(capsule_body, &rand_force, &friction);
+    // setLangevinTr(capsule_body, &rand_force, &friction);
     dynamicsWorld->addRigidBody(capsule_body);
   }
 
@@ -244,7 +218,6 @@ int main () {
 
   // Stepping through the simulation:
   for (int step = 0; step < 5000; step++) {
-    dynamicsWorld->stepSimulation(kDT,1,kDT);
     btAlignedObjectArray<btCollisionObject*> objs = dynamicsWorld->getCollisionObjectArray();
     for (int i = 0; i < objs.size(); i++) {
       btRigidBody* b = static_cast<btRigidBody*>(objs[i]);
@@ -255,6 +228,7 @@ int main () {
       btVector3 rand_force, friction;
       setLangevinTr(static_cast<btRigidBody*>(objs[i]),&rand_force,&friction);
     }
+    dynamicsWorld->stepSimulation(kDT,1,kDT);
   }
 
   // Clean up behind ourselves like good little programmers

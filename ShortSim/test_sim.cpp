@@ -1,4 +1,5 @@
-#include <btBulletDynamicsCommon.h>
+#include "btBulletDynamicsCommon.h"
+#include "LinearMath/btIDebugDraw.h"
 #include <iostream>
 #include <vector>
 
@@ -6,8 +7,7 @@
 int step = 0;
 const double kMass= 13e6*1.7e-27/5;
 const double kChromRadiusMono = 1e-8;
-const double kChromLength = 1.25e-8;
-
+const double kChromLength = 2.5e-8;
 const double kViscosity = 6.6e-3;
 const double kB = 1.38e-23;
 const double kTemp = 310.;
@@ -56,76 +56,29 @@ int main() {
   dynamicsWorld->setGravity(btVector3(0, 0, 0));
   dynamicsWorld->setInternalTickCallback(loggingCallback, &dynamicsWorld, kDT);
 
-  // Create mesh
-  btTriangleIndexVertexArray* meshInterface = new btTriangleIndexVertexArray();
-  std::vector<btVector3>* vertices1 = new std::vector<btVector3>(Trimesh::kNucleusVertices);
-  for (int i = 0; i < Trimesh::kNucleusVertices; i++) {
-    vertices1->at(i) = btVector3(btScalar(Trimesh::nuc1_vertices[3*i]),
-                                btScalar(Trimesh::nuc1_vertices[3*i+1]),
-                                btScalar(Trimesh::nuc1_vertices[3*i+2]));
-  }
-
-  btIndexedMesh top_mesh;
-  top_mesh.m_numTriangles = Trimesh::kNucleusFaces;
-  top_mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(Trimesh::nuc_indices);
-  top_mesh.m_triangleIndexStride = sizeof (short)*3;
-  top_mesh.m_numVertices = vertices1->size();
-  top_mesh.m_vertexType = PHY_DOUBLE;
-  top_mesh.m_vertexStride = sizeof(btVector3DoubleData);
-  top_mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices1->data());
-  meshInterface->addIndexedMesh(top_mesh, PHY_SHORT);
-
-  std::vector<btVector3>* vertices2 = new std::vector<btVector3>(Trimesh::kNucleusVertices);
-  for (int i = 0; i < Trimesh::kNucleusVertices; i++) {
-    vertices2->at(i) = btVector3(btScalar(Trimesh::nuc2_vertices[3*i]),
-                                 btScalar(Trimesh::nuc2_vertices[3*i+1]),
-                                 btScalar(Trimesh::nuc2_vertices[3*i+2]));
-  }
-
-  btIndexedMesh bot_mesh;
-  bot_mesh.m_numTriangles = Trimesh::kNucleusFaces;
-  bot_mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(Trimesh::nuc_indices);
-  bot_mesh.m_triangleIndexStride = sizeof (short)*3;
-  bot_mesh.m_numVertices = vertices2->size();
-  bot_mesh.m_vertexStride = sizeof(btVector3DoubleData);
-  bot_mesh.m_vertexType = PHY_DOUBLE;
-  bot_mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(vertices2->data());
-  meshInterface->addIndexedMesh(bot_mesh, PHY_SHORT);
-
-  bool useQuantizedAabbCompression = false;
-  btBvhTriangleMeshShape* trimeshShape =
-    new btBvhTriangleMeshShape(meshInterface,useQuantizedAabbCompression);
-  btRigidBody::btRigidBodyConstructionInfo nucleus_ci(0, NULL, trimeshShape, btVector3(0,0,0));
-  btRigidBody* body = new btRigidBody(nucleus_ci);
-  body->setCollisionFlags(body->getCollisionFlags() | btCollisionObject::CollisionFlags::CF_STATIC_OBJECT);
-  body->setUserIndex2(2);
-  dynamicsWorld->addRigidBody(body);
-
-
   // create free moving capsule
-  double len = kChromLength-2*kChromRadiusMono;
-  btCollisionShape* capsuleShape = new btSphereShape(kChromRadiusMono);
-  btScalar mass(kMass);
-  btVector3 inertia(1., 1., 1.);
-  capsuleShape->calculateLocalInertia(mass, inertia);
-
   btTransform startTransform;
-  startTransform.setIdentity();
   startTransform.setOrigin(btVector3(0,0,0));
-  btDefaultMotionState* motion_state = new btDefaultMotionState(startTransform);
-  btRigidBody::btRigidBodyConstructionInfo body_ci(mass, motion_state, capsuleShape, inertia);
-  btRigidBody* capsule_body = new btRigidBody(body_ci);
-  capsule_body->setUserIndex2(1);
-  capsule_body->applyCentralForce(btVector3(0,0.5e-6,1.5e-6));
+  btVector3 localInertia(0,0,0);
+  btScalar mass(kMass);
+  double len = kChromLength-2*kChromRadiusMono;
+  btCollisionShape* capsuleShape = new btCapsuleShapeZ(btScalar(kChromRadiusMono),4e-8);
+  capsuleShape->calculateLocalInertia(mass,localInertia);
+
+  //using motionstate is recommended, it provides interpolation capabilities, and only synchronizes 'active' objects
+  btDefaultMotionState* myMotionState = new btDefaultMotionState(startTransform);
+  btRigidBody::btRigidBodyConstructionInfo rbInfo(mass,myMotionState,capsuleShape,localInertia);
+  btRigidBody* capsule_body = new btRigidBody(rbInfo);
+  capsule_body->applyCentralForce(btVector3(1e-10,-1.5e-6,-2e-6));
   dynamicsWorld->addRigidBody(capsule_body);
 
-  for (int i = 0; i < 4000; i++) {
-    // std::cout << "STEP: " << step << std::endl;
+  for (int i = 0; i < 5000; i++) {
     dynamicsWorld->stepSimulation(kDT,1,kDT);
-    // std::cout << capsule_body->getCenterOfMassPosition().length() << std::endl;
     btVector3 capsule = capsule_body->getCenterOfMassPosition();
     std::cout << capsule.getX() << " " << capsule.getY() << " " << capsule.getZ() << std::endl;
   }
+
+ // CProfileManager::dumpAll();
 
   delete dynamicsWorld;
   delete solver;
