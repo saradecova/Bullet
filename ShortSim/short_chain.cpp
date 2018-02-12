@@ -231,9 +231,9 @@ int main (int argc, char* argv[]) {
 
     btVector3 pole_localInertia(1,0,0);
     poleShape->calculateLocalInertia(mass, pole_localInertia);
-    startTransform.setOrigin(btVector3(btScalar(poles[0][1]),
-  				     btScalar(poles[c][2]),
-  				     btScalar(poles[c][3])));
+    startTransform.setOrigin(btVector3(btScalar(poles[c][1]),
+  				                             btScalar(poles[c][2]),
+  				                             btScalar(poles[c][3])));
     btDefaultMotionState* pole_ms = new btDefaultMotionState(startTransform);
     btRigidBody::btRigidBodyConstructionInfo pole_ci(mass, pole_ms, poleShape, inertia);
     btRigidBody* pole_body = new btRigidBody(pole_ci);
